@@ -18,8 +18,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
   // Add random Gaussian noise to each particle.
   // NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
-  // num of particules @TODO why 1k?
-  num_particles = 500;
+  num_particles = 1000;
 
   // Given std deviation and random
   double std_x = std[0];
@@ -46,6 +45,9 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
   // set is_initialized to true
   is_initialized = true;
+
+  // cout << "INITIALIZED";
+  // cout << "\n";
 
 }
 
@@ -77,7 +79,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
     } else {
       p.x = p.x + velocity * delta_t * cos(p.theta);
       p.y = p.y + velocity * delta_t * sin(p.theta);
-      p.theta = p.theta;
+      //p.theta = p.theta;
     }
 
     // adding noise, mean updated value, std_dev given by params
@@ -87,7 +89,12 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
     p.x = dist_x(gen);
     p.y = dist_y(gen);
     p.theta = dist_theta(gen);
+    // update particle
+    particles[i] = p;
   }
+
+  // cout << "PREDICTION STEP: v - " << velocity;
+  // cout << "\n";
 
 }
 
@@ -124,8 +131,6 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     std::vector<LandmarkObs> observations, Map map_landmarks) {
-  // TODO: Update the weights of each particle using a mult-variate Gaussian distribution. You can read
-  //   more about this distribution here: https://en.wikipedia.org/wiki/Multivariate_normal_distribution
   // NOTE: The observations are given in the VEHICLE'S coordinate system. Your particles are located
   //   according to the MAP'S coordinate system. You will need to transform between the two systems.
   //   Keep in mind that this transformation requires both rotation AND translation (but no scaling).
@@ -171,13 +176,13 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     dataAssociation(predicted, p_observations);
 
     // calculate multi variate gaussian weight
-    double weight_product = 1.0;
-    for (int j; j < p_observations.size(); j++) {
+    double acc_weight = 1.0;
+    for (int j = 0; j < p_observations.size(); j++) {
       LandmarkObs measurement = p_observations[j];
       LandmarkObs predicted_measurement;
 
       // get predction for this measurement
-      for (int k; k < predicted.size(); k++) {
+      for (int k = 0; k < predicted.size(); k++) {
         LandmarkObs prediction = predicted[k];
         if (measurement.id == prediction.id) {
           predicted_measurement = prediction;
@@ -198,56 +203,43 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       if (weight < .0001)
         weight = .0001;
 
-      weight_product *= weight;
+      acc_weight *= weight;
     }
 
     // update particle weight
-    p.weight = weight_product;
+    p.weight = acc_weight;
+    weights[i] = p.weight;
 
   } // end particles loop
 
 }
 
 void ParticleFilter::resample() {
-  // TODO: Resample particles with replacement with probability proportional to their weight.
   // NOTE: You may find std::discrete_distribution helpful here.
   //   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
 
-  // intialise resampling wheel
-  double beta = 0.0;
   default_random_engine gen_a;
-  uniform_int_distribution<int> dis(0, num_particles - 1);
-  int index = dis(gen_a);
-
-  vector<Particle> resampled_particles;
-  resampled_particles.reserve(num_particles);
-
-  // find max weight and create particle weights vectors
-  double max_weight = 0.0;
-  weights.clear();
-  weights.reserve(num_particles);
-  for (auto particle : particles) {
-    if (particle.weight > max_weight)
-      max_weight = particle.weight;
-    weights.push_back(particle.weight);
-  }
-
-  // create random number generator for two times max weight
   default_random_engine gen_b;
-  uniform_real_distribution<double> dis_real(0, 2.0 * max_weight);
+  double beta = 0.0;
+  double max_weight = *max_element(begin(weights), end(weights));
+  uniform_real_distribution<double> uniform_real(0.0, 2.0*max_weight);
 
-  // resample
-  for (auto particle : particles) {
-    beta += dis_real(gen_b);
-    while (weights[index] < beta) {
-      beta -= weights[index];
-      index = (index + 1) % num_particles;
-    }
-    resampled_particles.push_back(particles[index]);
+  // get a random index
+  discrete_distribution<int> discrete(0, num_particles-1);
+  int index = discrete(gen_a);
+
+  vector<Particle> resampled;
+
+  for (int i=0; i < num_particles; i++) {
+      beta += uniform_real(gen_b);
+      while (beta > weights[index]) {
+          beta -= weights[index];
+          index = (index + 1) % num_particles;
+      }
+      resampled.push_back(particles[index]);
   }
 
-  // update particles
-  particles = resampled_particles;
+  particles = resampled;
 
 }
 
